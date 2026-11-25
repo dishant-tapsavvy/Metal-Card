@@ -24,11 +24,17 @@ export default defineConfig({
       name: 'copy-fine-touch-storefront',
       apply: 'build',
       closeBundle() {
+        const outputPath = path.resolve(projectRoot, 'dist');
+        const storefrontPath = path.resolve(projectRoot, 'main-website');
+        const appEntryPath = path.resolve(outputPath, 'index.html');
+
+        cpSync(appEntryPath, path.resolve(outputPath, 'admin.html'));
         cpSync(
-          path.resolve(projectRoot, 'main-website'),
-          path.resolve(projectRoot, 'dist', 'main-website'),
+          storefrontPath,
+          path.resolve(outputPath, 'main-website'),
           { recursive: true, force: true },
         );
+        cpSync(path.resolve(storefrontPath, 'index.html'), appEntryPath);
       },
     },
   ],

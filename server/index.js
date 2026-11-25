@@ -364,7 +364,7 @@ app.use(express.static(storefrontPath));
 app.use(express.static(frontendPath));
 app.use((req, res, next) => {
   if (req.method !== 'GET') return next();
-  return res.sendFile(path.join(frontendPath, 'index.html'), (error) => {
+  return res.sendFile(path.join(frontendPath, 'admin.html'), (error) => {
     if (error) next();
   });
 });
