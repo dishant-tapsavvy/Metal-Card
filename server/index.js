@@ -385,4 +385,8 @@ if (!existingAdmin) {
   console.log(`Created initial admin account "${adminUsername}".`);
 }
 
-app.listen(port, () => console.log(`DynamicQR server listening on port ${port}.`));
+if (process.env.VERCEL !== '1') {
+  app.listen(port, () => console.log(`DynamicQR server listening on port ${port}.`));
+}
+
+export default app;

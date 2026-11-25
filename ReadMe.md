@@ -49,6 +49,12 @@ Activation codes created before encrypted storage was added cannot be recovered 
 
 Set `PUBLIC_APP_URL` to the public base URL of the deployed app before creating QR codes. QR URLs are generated at creation time, so changing this value does not update existing codes. In production, build the frontend with `npm run build` and run the server with `npm start`; the server serves the built app and API from the same origin.
 
+## Deploy on Vercel
+
+The Vercel configuration serves the Fine Touch storefront at `/`, the QR admin at `/admin`, and QR activation pages at `/q/:qrId`. The build copies the storefront and its assets into Vercel's output directory, and `/api/*` requests are handled by the Express serverless function.
+
+Add `MONGODB_URI`, `JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `PUBLIC_APP_URL` in the Vercel project's Environment Variables, then redeploy. Set `PUBLIC_APP_URL` to the production domain so newly generated QR codes point to the live site.
+
 ## Environment variables
 
 | Variable | Description |
