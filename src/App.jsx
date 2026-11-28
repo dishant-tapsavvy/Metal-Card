@@ -35,6 +35,41 @@ async function createQrJpeg(qrUrl, activationCode) {
   });
 }
 
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+async function createBatchWorkbook(codes) {
+  const rows = [
+    ['QR file name', 'Activation code'],
+    ...codes.map(({ qrId, activationCode }) => [
+      `QR-${qrId}-CODE-${activationCode}.jpg`,
+      activationCode,
+    ]),
+  ];
+  const worksheetRows = rows.map((row, rowIndex) => {
+    const rowNumber = rowIndex + 1;
+    const cells = row.map((value, columnIndex) => {
+      const column = columnIndex === 0 ? 'A' : 'B';
+      return `<c r="${column}${rowNumber}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`;
+    }).join('');
+    return `<row r="${rowNumber}">${cells}</row>`;
+  }).join('');
+
+  const workbook = new JSZip();
+  workbook.file('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
+  workbook.folder('_rels').file('.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
+  workbook.folder('xl').file('workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="QR Codes" sheetId="1" r:id="rId1"/></sheets></workbook>');
+  workbook.folder('xl').folder('_rels').file('workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>');
+  workbook.folder('xl').folder('worksheets').file('sheet1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${worksheetRows}</sheetData></worksheet>`);
+  return workbook.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
 function Brand({ compact = false }) {
   return (
     <div className={`brand${compact ? ' brand-compact' : ''}`}>
@@ -119,6 +154,7 @@ function Dashboard({ onLogout }) {
   const [batchCount, setBatchCount] = useState('10');
   const [creatingBatch, setCreatingBatch] = useState(false);
   const [downloadingBatch, setDownloadingBatch] = useState(null);
+  const [batchExportFormat, setBatchExportFormat] = useState('');
   const [batchNotice, setBatchNotice] = useState('');
 
   async function loadCodes() {
@@ -177,6 +213,7 @@ function Dashboard({ onLogout }) {
 
   async function downloadBatch(batch) {
     setDownloadingBatch(batch.id);
+    setBatchExportFormat('zip');
     setError('');
     try {
       const result = await request(`/admin/batches/${encodeURIComponent(batch.id)}/download`, { token });
@@ -197,6 +234,28 @@ function Dashboard({ onLogout }) {
       setError(err.message);
     } finally {
       setDownloadingBatch(null);
+      setBatchExportFormat('');
+    }
+  }
+
+  async function exportBatchExcel(batch) {
+    setDownloadingBatch(batch.id);
+    setBatchExportFormat('excel');
+    setError('');
+    try {
+      const result = await request(`/admin/batches/${encodeURIComponent(batch.id)}/download`, { token });
+      const workbook = await createBatchWorkbook(result.codes);
+      const downloadUrl = URL.createObjectURL(workbook);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `batch-${result.batchNumber}.xlsx`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDownloadingBatch(null);
+      setBatchExportFormat('');
     }
   }
 
@@ -304,7 +363,7 @@ function Dashboard({ onLogout }) {
 
         <section className="batches-section">
           <div className="section-heading">
-            <div><h2>QR batches</h2><p className="muted">Generate codes together and download their JPEGs with activation codes.</p></div>
+            <div><h2>QR batches</h2><p className="muted">Generate codes together, download their JPEGs, or export filenames and activation codes to Excel.</p></div>
           </div>
           {batchNotice && <p className="batch-notice" role="status">{batchNotice}</p>}
           <form className="batch-create-form" onSubmit={createBatch}>
@@ -328,7 +387,10 @@ function Dashboard({ onLogout }) {
                   </div>
                   <div className="batch-actions">
                     <button className="button button-outline batch-download" type="button" onClick={() => downloadBatch(batch)} disabled={batch.count === 0 || downloadingBatch !== null || batchDeleteBusy}>
-                      {downloadingBatch === batch.id ? 'Preparing ZIP…' : 'Download ZIP'} <span aria-hidden="true">↓</span>
+                      {downloadingBatch === batch.id && batchExportFormat === 'zip' ? 'Preparing ZIP…' : 'Download ZIP'} <span aria-hidden="true">↓</span>
+                    </button>
+                    <button className="button button-outline batch-download" type="button" onClick={() => exportBatchExcel(batch)} disabled={batch.count === 0 || downloadingBatch !== null || batchDeleteBusy}>
+                      {downloadingBatch === batch.id && batchExportFormat === 'excel' ? 'Preparing Excel…' : 'Export Excel'} <span aria-hidden="true">↓</span>
                     </button>
                     <button className="delete-link batch-delete" type="button" onClick={() => setDeletingBatch(batch)} disabled={batchDeleteBusy}>Delete</button>
                   </div>
